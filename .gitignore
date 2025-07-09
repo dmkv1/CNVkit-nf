@@ -1,0 +1,15 @@
+# nextflow
+.nextflow/
+.nextflow.pid
+.nextflow.log*
+run.log
+
+# sample sheet
+controls.csv
+samples.csv
+
+# i/o dirs
+fastq/
+reference/
+work/
+results/
