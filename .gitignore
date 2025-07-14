@@ -5,11 +5,11 @@
 run.log
 
 # sample sheet
-controls.csv
+controls*.csv
 samples.csv
 
 # i/o dirs
 fastq/
-reference/
+reference*/
 work/
 results/
