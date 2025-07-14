@@ -26,32 +26,47 @@ workflow {
             ch_input_controls,
         )
 
-        ch_coverage_with_sex = ch_input_controls
-            .map { sample, sex, _bam -> [sample, sex] }
-            .combine(COVERAGE.out.coverage.map { cov_file ->
-                def sample = cov_file.name.replaceAll(/coverage_(.+)\.cnn/, '$1')
+        ch_all_coverages = COVERAGE.out.target_coverage
+            .mix(COVERAGE.out.antitarget_coverage)
+            .map { cov_file ->
+                def sample = cov_file.name.replaceAll(/(target|antitarget)coverage_(.+)\.cnn/, '$2')
                 [sample, cov_file]
-            }, by: 0)
-            .map { _sample, sex, cov_file -> [sex, cov_file] }
+            }
+            .combine(ch_input_controls.map { sample, sex, _bam -> [sample, sex] }, by: 0)
+            .map { _sample, cov_file, sex -> [sex, cov_file] }
             .groupTuple(by: 0)
 
         REFERENCE(
-            ch_coverage_with_sex,
+            ch_all_coverages,
             params.genome_fasta,
         )
     }
 
-    ch_input_samples = Channel.fromPath(params.samples_csv_file, checkIfExists: true)
-        .splitCsv(header: true)
-        .map { row ->
-            def bam_file = file(row.bam_file)
-            def sample = row.sample
-            def sample_sex = row.sex
-            def ref_cnn_file = row.ref_cnn_file
-            def probes = row.probes
+    if (params.call_cnvs) {
+        ch_input_samples = Channel.fromPath(params.samples_csv_file, checkIfExists: true)
+            .splitCsv(header: true)
+            .map { row ->
+                def sample = row.sample
+                def sample_sex = row.sex
+                def bam_file = file(row.bam_file)
 
-            return [bam_file, sample, sample_sex, ref_cnn_file, probes]
-        }
+                return [sample, sample_sex, bam_file]
+            }
+
+        ch_ref = Channel.value(
+            [
+                file(params.targets_file),
+                file(params.antitargets_file),
+                file(params.reference_m_file),
+                file(params.reference_f_file),
+            ]
+        )
+
+        CNV_CALLS(
+            ch_input_samples,
+            ch_ref,
+        )
+    }
 }
 
 process TARGETS {
@@ -75,6 +90,7 @@ process TARGETS {
 }
 
 process COVERAGE {
+    tag "${sample}"
     publishDir "reference/coverages", mode: 'copy'
 
     input:
@@ -84,15 +100,18 @@ process COVERAGE {
     tuple val(sample), val(sample_sex), path(bam_file)
 
     output:
-    path "coverage_${sample}.cnn", emit: coverage
+    path "targetcoverage_${sample}.cnn", emit: target_coverage
+    path "antitargetcoverage_${sample}.cnn", emit: antitarget_coverage
 
     script:
     """
-    cnvkit.py coverage ${bam_file} ${targets} -p ${task.cpus} -o coverage_${sample}.cnn
+    cnvkit.py coverage ${bam_file} ${targets} -p ${task.cpus} -o targetcoverage_${sample}.cnn
+    cnvkit.py coverage ${bam_file} ${antitargets} -p ${task.cpus} -o antitargetcoverage_${sample}.cnn
     """
 }
 
 process REFERENCE {
+    tag "${sex}"
     publishDir "reference", mode: 'copy'
 
     input:
@@ -107,5 +126,38 @@ process REFERENCE {
     def output_name = "reference_${sex_param}.cnn"
     """
     cnvkit.py reference ${coverages} --sample-sex ${sex_param} --fasta ${genome_fasta} --output ${output_name}
+    """
+}
+
+process CNV_CALLS {
+    tag "${sample}"
+    publishDir "results/${sample}/", mode: 'copy'
+
+    input:
+    tuple val(sample), val(sample_sex), path(bam_file)
+    tuple path(targets), path(antitargets), path(male_ref), path(female_ref)
+
+    output:
+    path ("${sample}.targetcoverage.cnn"), emit: target_cov
+    path ("${sample}.antitargetcoverage.cnn"), emit: antitarget_cov
+    path ("${sample}.ratios.cnr"), emit: ratios
+    path ("${sample}.segments.cns"), emit: segments
+    path ("${sample}.calls.cns"), emit: calls
+    path ("${sample}.scatter.pdf"), emit: scatterplot
+    path ("${sample}.diagram.pdf"), emit: diagram
+
+    script:
+    def ref = sample_sex == 'm' ? male_ref : female_ref
+    """
+    cnvkit.py coverage ${bam_file} ${targets} -o ${sample}.targetcoverage.cnn -p ${task.cpus}
+    cnvkit.py coverage ${bam_file} ${antitargets} -o ${sample}.antitargetcoverage.cnn -p ${task.cpus}
+
+    cnvkit.py fix ${sample}.targetcoverage.cnn ${sample}.antitargetcoverage.cnn ${ref} -o ${sample}.ratios.cnr
+
+    cnvkit.py segment ${sample}.ratios.cnr -o ${sample}.segments.cns -p ${task.cpus}
+    cnvkit.py call ${sample}.segments.cns --sample-sex ${sample_sex} -o ${sample}.calls.cns
+
+    cnvkit.py scatter ${sample}.ratios.cnr -s ${sample}.segments.cns --title ${sample} -o ${sample}.scatter.pdf
+    cnvkit.py diagram -s ${sample}.segments.cns -t 99 --sample-sex ${sample_sex} --title ${sample} -o ${sample}.diagram.pdf
     """
 }
