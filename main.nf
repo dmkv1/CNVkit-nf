@@ -47,7 +47,7 @@ workflow {
             .splitCsv(header: true)
             .map { row ->
                 def sample = row.sample
-                def sample_sex = row.sex
+                def sample_sex = row.Chr_sex
                 def bam_file = file(row.bam_file)
 
                 return [sample, sample_sex, bam_file]
