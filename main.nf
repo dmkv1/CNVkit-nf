@@ -131,7 +131,7 @@ process REFERENCE {
 
 process CNV_CALLS {
     tag "${sample}"
-    publishDir "results/${sample}/", mode: 'copy'
+    publishDir "${params.output}/${sample}/", mode: 'copy'
 
     input:
     tuple val(sample), val(sample_sex), path(bam_file)

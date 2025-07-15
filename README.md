@@ -57,7 +57,7 @@ The result of reference building will be stored in the `reference` directory. Re
 
 ## Sample analysis
 
-The results of sample analysis would be stored in the `results` directory and would include, for each sample:
+The results of sample analysis would include, for each sample:
 - `targetcoverage.cnn` and `antitargetcoverage.cnn`
 - `ratios.cnr` - copy number rations
 - `segments.cns` - copy number segments
