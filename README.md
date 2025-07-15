@@ -1,8 +1,8 @@
 # NextFlow wrapper for CNVkit
 
-# Prerequisites
-
 This pipeline was tested on the local Linux machine.
+
+# Prerequisites
 
 - [Nextflow](https://www.nextflow.io/docs/latest/install.html)
 - [docker](https://docs.docker.com/desktop/setup/install/linux/)
